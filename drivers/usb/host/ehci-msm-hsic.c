@@ -56,10 +56,8 @@
 #define MSM_USB_BASE (hcd->regs)
 #define USB_REG_START_OFFSET 0x90
 #define USB_REG_END_OFFSET 0x250
-#if 0
 void (*set_htc_monitor_resume_state_fp)(void) = NULL;
 EXPORT_SYMBOL(set_htc_monitor_resume_state_fp);
-#endif
 
 static const struct usb_device_id usb1_1[] = {
 	{ USB_DEVICE(0x5c6, 0x9048),
@@ -1567,8 +1565,8 @@ while (!kthread_should_stop()) {
 	
 	now = ktime_get();
 	mdiff = ktime_to_us(ktime_sub(now,ehci->last_susp_resume));
-	if (mdiff < 10000) {
-		usleep_range(10000, 10000);
+	if (mdiff < 5000) {
+		usleep_range(5000, 5000);
 
 		
 		pr_info("%s[%d] usleep_range 5000 end", __func__, __LINE__);
@@ -1886,13 +1884,11 @@ static irqreturn_t msm_hsic_wakeup_irq(int irq, void *data)
 	
 	LOG_WITH_TIMESTAMP("%s: hsic remote wakeup interrupt cnt: %u ",
 			__func__, mehci->wakeup_int_cnt);
-#if 0
 	
 	if ( set_htc_monitor_resume_state_fp ) {
 		set_htc_monitor_resume_state_fp();
 	}
 	
-#endif
 	
 
 	wake_lock(&mehci->wlock);
@@ -2352,15 +2348,6 @@ put_hcd:
 	return ret;
 }
 
-#if defined(CONFIG_ARCH_APQ8064) && defined(CONFIG_USB_EHCI_MSM_HSIC)
-extern int mdm_is_in_restart;
-static void dbg_hsic_usage_count_delay_work_fn(struct work_struct *work)
-{
-    panic("msm_hsic_host usage count is not 0 !!!");
-}
-static DECLARE_DELAYED_WORK(dbg_hsic_usage_count_delay_work, dbg_hsic_usage_count_delay_work_fn);
-#endif 
-
 static int __devexit ehci_hsic_msm_remove(struct platform_device *pdev)
 {
 	struct usb_hcd *hcd = platform_get_drvdata(pdev);
@@ -2414,21 +2401,6 @@ static int __devexit ehci_hsic_msm_remove(struct platform_device *pdev)
 
 	iounmap(hcd->regs);
 	usb_put_hcd(hcd);
-
-	
-	#if defined(CONFIG_ARCH_APQ8064) && defined(CONFIG_USB_EHCI_MSM_HSIC)
-	if (pdev) {
-		int usage_count = atomic_read(&(pdev->dev.power.usage_count));
-		dev_info(&(pdev->dev), "%s[%d] usage_count is [%d] msm_hsic_host_dev:0x%p &pdev->dev:0x%p mdm_is_in_restart:%d\n",
-			__func__, __LINE__, usage_count, msm_hsic_host_dev, &(pdev->dev), mdm_is_in_restart);
-
-		if (mdm_is_in_restart && usage_count != 0) {
-			pr_info("%s[%d] !!! usage_count:%d is not 0 !!!\n", __func__, __LINE__, usage_count);
-			atomic_set(&(pdev->dev.power.usage_count), 0);
-		}
-	}
-	#endif
-	
 
 	return 0;
 }
