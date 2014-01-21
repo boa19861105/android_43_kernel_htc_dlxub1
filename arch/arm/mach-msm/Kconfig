@@ -1752,6 +1752,12 @@ config MSM_CPU_FREQ_MIN
 
 endif # CPU_FREQ_MSM
 
+config GPU_OVERCLOCK
+	bool "Enable GPU Overclocking option"
+	default y
+	help
+	  Krait S4 Pro GPU overclocking 
+
 config USERSPACE_VOLTAGE_CONTROL
 	bool "Enable Userspace CPU Voltage Control"
 	default y
