@@ -108,7 +108,57 @@
 
 #define MSM8960_HSUSB_PHYS		0x12500000
 #define MSM8960_HSUSB_SIZE		SZ_4K
+#ifdef CONFIG_CMDLINE_OPTIONS
+unsigned int cmdline_2dgpu = CMDLINE_2DGPU_DEFKHZ;
 
+static int __init devices_read_2dgpu_cmdline(char *khz)
+{
+	unsigned long ui_khz;
+	unsigned long *f;
+	unsigned long valid_freq[6] = {200000000, 228571000, 266667000, 300000000, 320000000, 0};
+	int err;
+
+	err = strict_strtoul(khz, 0, &ui_khz);
+	if (err) {
+		cmdline_2dgpu = CMDLINE_2DGPU_DEFKHZ;
+		printk(KERN_INFO "[cmdline_2dgpu]: ERROR while converting! using default value!");
+		printk(KERN_INFO "[cmdline_2dgpu]: 2dgpukhz='%i'\n", cmdline_2dgpu);
+		return 1;
+	}
+
+	/* Check if parsed value is valid */
+	if (ui_khz > 320000000)
+		cmdline_2dgpu = CMDLINE_2DGPU_DEFKHZ;
+
+	if (ui_khz < 200000000)
+		cmdline_2dgpu = CMDLINE_2DGPU_DEFKHZ;
+
+	for (f = valid_freq; f != 0; f++) {
+		if (*f == ui_khz) {
+			cmdline_2dgpu = ui_khz;
+			printk(KERN_INFO "[cmdline_2dgpu]: 2dgpukhz='%u'\n", cmdline_2dgpu);
+			return 1;
+		}
+		if (ui_khz > *f) {
+			f++;
+			if (ui_khz < *f) {
+				f--;
+				cmdline_2dgpu = *f;
+				printk(KERN_INFO "[cmdline_2dgpu]: AUTOCORRECT! Couldn't find entered value");
+				printk(KERN_INFO "[cmdline_2dgpu]: 2dgpukhz='%u'\n", cmdline_2dgpu);
+				return 1;
+			}
+			f--;
+		}
+	}
+	/* if we are still in here then something went wrong. Use defaults */
+	cmdline_2dgpu = CMDLINE_2DGPU_DEFKHZ;
+	printk(KERN_INFO "[cmdline_2dgpu]: ERROR! using default value!");
+	printk(KERN_INFO "[cmdline_2dgpu]: 2dgpukhz='%u'\n", cmdline_2dgpu);
+        return 1;
+}
+__setup("2dgpu=", devices_read_2dgpu_cmdline);
+#endif
 struct flash_platform_data msm_nand_data = {
 	.parts		= NULL,
 	.nr_parts	= 0,
@@ -2957,6 +3007,12 @@ static struct msm_bus_vectors grp3d_init_vectors[] = {
 		.ab = 0,
 		.ib = 0,
 	},
+	{
+		.src = MSM_BUS_MASTER_GRAPHICS_3D_PORT1,
+		.dst = MSM_BUS_SLAVE_EBI_CH0,
+		.ab = 0,
+		.ib = 0,
+	}
 };
 
 static struct msm_bus_vectors grp3d_low_vectors[] = {
@@ -2964,8 +3020,14 @@ static struct msm_bus_vectors grp3d_low_vectors[] = {
 		.src = MSM_BUS_MASTER_GRAPHICS_3D,
 		.dst = MSM_BUS_SLAVE_EBI_CH0,
 		.ab = 0,
-		.ib = KGSL_CONVERT_TO_MBPS(1000),
+		.ib = KGSL_CONVERT_TO_MBPS(2048),
 	},
+	{
+		.src = MSM_BUS_MASTER_GRAPHICS_3D_PORT1,
+		.dst = MSM_BUS_SLAVE_EBI_CH0,
+		.ab = 0,
+		.ib = KGSL_CONVERT_TO_MBPS(2048),
+	}
 };
 
 static struct msm_bus_vectors grp3d_nominal_low_vectors[] = {
@@ -2973,8 +3035,14 @@ static struct msm_bus_vectors grp3d_nominal_low_vectors[] = {
 		.src = MSM_BUS_MASTER_GRAPHICS_3D,
 		.dst = MSM_BUS_SLAVE_EBI_CH0,
 		.ab = 0,
-		.ib = KGSL_CONVERT_TO_MBPS(2048),
+		.ib = KGSL_CONVERT_TO_MBPS(3096),
 	},
+	{
+		.src = MSM_BUS_MASTER_GRAPHICS_3D_PORT1,
+		.dst = MSM_BUS_SLAVE_EBI_CH0,
+		.ab = 0,
+		.ib = KGSL_CONVERT_TO_MBPS(3096),
+	}
 };
 
 static struct msm_bus_vectors grp3d_nominal_high_vectors[] = {
@@ -2984,6 +3052,12 @@ static struct msm_bus_vectors grp3d_nominal_high_vectors[] = {
 		.ab = 0,
 		.ib = KGSL_CONVERT_TO_MBPS(2656),
 	},
+	{
+		.src = MSM_BUS_MASTER_GRAPHICS_3D_PORT1,
+		.dst = MSM_BUS_SLAVE_EBI_CH0,
+		.ab = 0,
+		.ib = KGSL_CONVERT_TO_MBPS(2656),
+	}
 };
 
 static struct msm_bus_vectors grp3d_max_vectors[] = {
@@ -2993,6 +3067,12 @@ static struct msm_bus_vectors grp3d_max_vectors[] = {
 		.ab = 0,
 		.ib = KGSL_CONVERT_TO_MBPS(3968),
 	},
+	{
+		.src = MSM_BUS_MASTER_GRAPHICS_3D_PORT1,
+		.dst = MSM_BUS_SLAVE_EBI_CH0,
+		.ab = 0,
+		.ib = KGSL_CONVERT_TO_MBPS(3968),
+	}
 };
 
 static struct msm_bus_paths grp3d_bus_scale_usecases[] = {
@@ -3038,7 +3118,7 @@ static struct msm_bus_vectors grp2d0_nominal_vectors[] = {
 		.src = MSM_BUS_MASTER_GRAPHICS_2D_CORE0,
 		.dst = MSM_BUS_SLAVE_EBI_CH0,
 		.ab = 0,
-		.ib = KGSL_CONVERT_TO_MBPS(1000),
+		.ib = KGSL_CONVERT_TO_MBPS(2048),
 	},
 };
 
@@ -3047,7 +3127,7 @@ static struct msm_bus_vectors grp2d0_max_vectors[] = {
 		.src = MSM_BUS_MASTER_GRAPHICS_2D_CORE0,
 		.dst = MSM_BUS_SLAVE_EBI_CH0,
 		.ab = 0,
-		.ib = KGSL_CONVERT_TO_MBPS(2048),
+		.ib = KGSL_CONVERT_TO_MBPS(3096),
 	},
 };
 
@@ -3141,6 +3221,11 @@ static const struct kgsl_iommu_ctx kgsl_3d0_iommu_ctxs[] = {
 	{ "gfx3d_priv", 1 },
 };
 
+static const struct kgsl_iommu_ctx kgsl_3d0_iommu1_ctxs[] = {
+	{ "gfx3d1_user", 0 },
+	{ "gfx3d1_priv", 1 },
+};
+
 static struct kgsl_device_iommu_data kgsl_3d0_iommu_data[] = {
 	{
 		.iommu_ctxs = kgsl_3d0_iommu_ctxs,
@@ -3148,22 +3233,28 @@ static struct kgsl_device_iommu_data kgsl_3d0_iommu_data[] = {
 		.physstart = 0x07C00000,
 		.physend = 0x07C00000 + SZ_1M - 1,
 	},
+	{
+		.iommu_ctxs = kgsl_3d0_iommu1_ctxs,
+		.iommu_ctx_count = ARRAY_SIZE(kgsl_3d0_iommu1_ctxs),
+		.physstart = 0x07D00000,
+		.physend = 0x07D00000 + SZ_1M - 1,
+	}
 };
 
 static struct kgsl_device_platform_data kgsl_3d0_pdata = {
 	.pwrlevel = {
 		{
-			.gpu_freq = 400000000,
+			.gpu_freq = 450000000,
 			.bus_freq = 4,
 			.io_fraction = 0,
 		},
 		{
-			.gpu_freq = 300000000,
+			.gpu_freq = 400000000,
 			.bus_freq = 3,
 			.io_fraction = 33,
 		},
 		{
-			.gpu_freq = 200000000,
+			.gpu_freq = 320000000,
 			.bus_freq = 2,
 			.io_fraction = 100,
 		},
@@ -3178,7 +3269,7 @@ static struct kgsl_device_platform_data kgsl_3d0_pdata = {
 		},
 	},
 	.init_level = 2,
-	.num_levels = ARRAY_SIZE(grp3d_freq) + 1,
+	.num_levels = 4,
 	.set_grp_async = NULL,
 	.idle_timeout = HZ/12,
 	.nap_allowed = true,
@@ -3334,6 +3425,19 @@ struct platform_device msm_kgsl_2d1 = {
 		.platform_data = &kgsl_2d1_pdata,
 	},
 };
+
+#ifdef CONFIG_CMDLINE_OPTIONS
+extern int set_kgsl_2d0_freq(unsigned int freq)
+{
+	kgsl_2d0_pdata.pwrlevel[0].gpu_freq = freq;
+	return 0;
+}
+extern int set_kgsl_2d1_freq(unsigned int freq)
+{
+	kgsl_2d1_pdata.pwrlevel[0].gpu_freq = freq;
+	return 0;
+}
+#endif
 
 #ifdef CONFIG_MSM_GEMINI
 static struct resource msm_gemini_resources[] = {
