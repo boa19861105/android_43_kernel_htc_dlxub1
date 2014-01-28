@@ -42,13 +42,12 @@ struct tz_priv {
 spinlock_t tz_lock;
 
 #define FLOOR			5000
-#define CEILING			50000
 #define SWITCH_OFF		200
 #define SWITCH_OFF_RESET_TH	40
 #define SKIP_COUNTER		500
 #define TZ_RESET_ID		0x3
 #define TZ_UPDATE_ID		0x4
-#define TZ_CMD_ID              0x90
+#define TZ_CMD_ID		0x90
 
 #define PARAM_INDEX_WRITE_DOWNTHRESHOLD 100
 #define PARAM_INDEX_WRITE_UPTHRESHOLD 101
@@ -251,8 +250,8 @@ static ssize_t dcvs_numgaps_store(struct kgsl_device *device,
 }
 
 static ssize_t dcvs_init_idle_vector_show(struct kgsl_device *device,
-				struct kgsl_pwrscale *pwrscale,
-				char *buf)
+			struct kgsl_pwrscale *pwrscale,
+			char *buf)
 {
 	int val, ret;
 
@@ -263,8 +262,8 @@ static ssize_t dcvs_init_idle_vector_show(struct kgsl_device *device,
 }
 
 static ssize_t dcvs_init_idle_vector_store(struct kgsl_device *device,
-				struct kgsl_pwrscale *pwrscale,
-				const char *buf, size_t count)
+			struct kgsl_pwrscale *pwrscale,
+			const char *buf, size_t count)
 {
 	int val, ret;
 
@@ -403,8 +402,8 @@ static ssize_t dcvs_downthreshold_count_show(struct kgsl_device *device,
 }
 
 static ssize_t dcvs_downthreshold_count_store(struct kgsl_device *device,
-				struct kgsl_pwrscale *pwrscale,
-				const char *buf, size_t count)
+struct kgsl_pwrscale *pwrscale,
+const char *buf, size_t count)
 {
 	int val, ret;
 
@@ -429,7 +428,7 @@ PWRSCALE_POLICY_ATTR(dcvs_algorithm, 0644, dcvs_algorithm_show, dcvs_algorithm_s
 PWRSCALE_POLICY_ATTR(dcvs_upthreshold_percent, 0644, dcvs_upthreshold_percent_show, dcvs_upthreshold_percent_store);
 PWRSCALE_POLICY_ATTR(dcvs_downthreshold_percent, 0644, dcvs_downthreshold_percent_show, dcvs_downthreshold_percent_store);
 PWRSCALE_POLICY_ATTR(dcvs_upthreshold_count, 0644, dcvs_upthreshold_count_show, dcvs_upthreshold_count_store);
-PWRSCALE_POLICY_ATTR(dcvs_downthreshold_count, 0644, dcvs_downthreshold_count_show, dcvs_downthreshold_count_store); 
+PWRSCALE_POLICY_ATTR(dcvs_downthreshold_count, 0644, dcvs_downthreshold_count_show, dcvs_downthreshold_count_store);
 
 static struct attribute *tz_attrs[] = {
 	&policy_attr_governor.attr,
@@ -467,7 +466,13 @@ static void tz_wake(struct kgsl_device *device, struct kgsl_pwrscale *pwrscale)
 #ifdef CONFIG_MSM_KGSL_SIMPLE_GOV
 /* KGSL Simple GPU Governor */
 /* Copyright (c) 2011-2013, Paul Reioux (Faux123). All rights reserved. */
-static int lazyness = 5;
+static int default_laziness = 5;
+module_param_named(simple_laziness, default_laziness, int, 0664);
+
+static int ramp_up_threshold = 6000;
+module_param_named(simple_ramp_threshold, ramp_up_threshold, int, 0664);
+
+static int laziness;
 
 static int simple_governor(struct kgsl_device *device, int idle_stat)
 {
@@ -475,7 +480,7 @@ static int simple_governor(struct kgsl_device *device, int idle_stat)
 	struct kgsl_pwrctrl *pwr = &device->pwrctrl;
 
 	/* it's currently busy */
-	if (idle_stat < 6000) {
+	if (idle_stat < ramp_up_threshold) {
 		if (pwr->active_pwrlevel == 0)
 			val = 0; /* already maxed, so do nothing */
 		else if ((pwr->active_pwrlevel > 0) &&
@@ -485,13 +490,14 @@ static int simple_governor(struct kgsl_device *device, int idle_stat)
 	} else {
 		if ((pwr->active_pwrlevel >= 0) &&
 			(pwr->active_pwrlevel < (pwr->num_pwrlevels - 1)))
-			if (lazyness > 0) {
+			if (laziness > 0) {
 				/* hold off for a while */
-				lazyness--;
+				laziness--;
 				val = 0; /* don't change anything yet */
 			} else {
 				val = 1; /* above min, lower it */
-				lazyness = 5; /* reset lazyness count */
+				/* reset laziness count */
+				laziness = default_laziness;
 			}
 		else if (pwr->active_pwrlevel == (pwr->num_pwrlevels - 1))
 			val = 0; /* already @ min, so do nothing */
@@ -531,22 +537,23 @@ static void tz_idle(struct kgsl_device *device, struct kgsl_pwrscale *pwrscale)
 		priv->no_switch_cnt = 0;
 	}
 
-	if (priv->bin.busy_time > CEILING) {
-		val = -1;
-	} else {
-		idle = priv->bin.total_time - priv->bin.busy_time;
-		idle = (idle > 0) ? idle : 0;
-		
-		total_time = stats.total_time & 0x0FFFFFFF;
-		total_time |= (pwr->active_pwrlevel) << 28;
-#ifdef CONFIG_MSM_KGSL_SIMPLE_GOV
-		val = simple_governor(device, idle);
-#else
-		val = __secure_tz_entry(TZ_UPDATE_ID, idle, total_time);
-#endif
-	}
+	idle = priv->bin.total_time - priv->bin.busy_time;
 	priv->bin.total_time = 0;
 	priv->bin.busy_time = 0;
+	idle = (idle > 0) ? idle : 0;
+	
+	total_time = stats.total_time & 0x0FFFFFFF;
+	total_time |= (pwr->active_pwrlevel) << 28;
+
+#ifdef CONFIG_MSM_KGSL_SIMPLE_GOV
+	if (priv->governor == TZ_GOVERNOR_SIMPLE)
+		val = simple_governor(device, idle);
+	else
+		val = __secure_tz_entry(TZ_UPDATE_ID, idle, total_time);
+#else
+	val = __secure_tz_entry(TZ_UPDATE_ID, idle, total_time);
+#endif
+
 	if (val) {
 		kgsl_pwrctrl_pwrlevel_change(device,
 					     pwr->active_pwrlevel + val);
@@ -619,3 +626,4 @@ struct kgsl_pwrscale_policy kgsl_pwrscale_policy_tz = {
 	.close = tz_close
 };
 EXPORT_SYMBOL(kgsl_pwrscale_policy_tz);
+
